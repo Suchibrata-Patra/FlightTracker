@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Flight Tracker - India</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #333;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        #map {
+            height: 730px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .custom-marker {
+            font-size: 25px;
+            color: #ff5e00;
+            transform-origin: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let flightMarkers = {};
+        let lastKnownPositions = {};
+
+        async function getFlights() {
+            try {
+                const response = await fetch('https://opensky-network.org/api/states/all', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa('patra:Kalpataru@2015')
+                    }
+                });
+
+                const data = await response.json();
+
+                data.states.forEach(flight => {
+                    const icao24 = flight[0];
+                    const callsign = flight[1] || 'Unknown';
+                    const latitude = flight[6];
+                    const longitude = flight[5];
+                    const altitude = flight[7]; // Altitude in meters
+                    const velocity = flight[9]; // Velocity in m/s
+
+                    // Validate position within India bounds
+                    if (latitude >= 8 && latitude <= 37 && longitude >= 68 && longitude <= 97) {
+                        if (flightMarkers[icao24]) {
+                            interpolateMarker(flightMarkers[icao24], icao24, latitude, longitude);
+                        } else {
+                            const marker = createFlightMarker(callsign, latitude, longitude, altitude, velocity);
+                            flightMarkers[icao24] = marker;
+                        }
+                        lastKnownPositions[icao24] = { lat: latitude, lng: longitude };
+                    }
+                });
+            } catch (error) {
+                console.error('Error fetching flight data:', error);
+            }
+        }
+
+        function initMap() {
+            map = L.map('map').setView([20.5937, 78.9629], 5);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            setInterval(getFlights, 2000); // Fetch data every 2 seconds
+            getFlights();
+        }
+
+        function createFlightMarker(callsign, lat, lng, altitude, velocity) {
+            const marker = L.divIcon({
+                className: 'custom-marker',
+                html: `<span title="${callsign}">✈</span>`,
+                iconSize: [30, 30]
+            });
+
+            const flightMarker = L.marker([lat, lng], { icon: marker }).addTo(map);
+            flightMarker.bindPopup(`Callsign: ${callsign}<br>Altitude: ${altitude} m<br>Speed: ${velocity} m/s`);
+            return flightMarker;
+        }
+
+        function interpolateMarker(marker, icao24, newLat, newLng) {
+            const lastPos = lastKnownPositions[icao24];
+            if (lastPos) {
+                const steps = 300; // Interpolate over 300 steps for smooth animation
+                const latDiff = (newLat - lastPos.lat) / steps;
+                const lngDiff = (newLng - lastPos.lng) / steps;
+                let step = 0;
+
+                const bearing = calculateBearing(lastPos.lat, lastPos.lng, newLat, newLng);
+                marker._icon.style.transform = `rotate(${bearing}deg)`;
+
+                const moveMarker = () => {
+                    if (step <= steps) {
+                        const lat = lastPos.lat + latDiff * step;
+                        const lng = lastPos.lng + lngDiff * step;
+                        marker.setLatLng([lat, lng]);
+                        step++;
+                        requestAnimationFrame(moveMarker);
+                    } else {
+                        marker.setLatLng([newLat, newLng]);
+                    }
+                };
+
+                requestAnimationFrame(moveMarker);
+            } else {
+                marker.setLatLng([newLat, newLng]);
+            }
+        }
+
+        function calculateBearing(lat1, lng1, lat2, lng2) {
+            const toRadians = deg => deg * Math.PI / 180;
+            const toDegrees = rad => rad * 180 / Math.PI;
+
+            const dLng = toRadians(lng2 - lng1);
+            const y = Math.sin(dLng) * Math.cos(toRadians(lat2));
+            const x = Math.cos(toRadians(lat1)) * Math.sin(toRadians(lat2)) -
+                Math.sin(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.cos(dLng);
+            const bearing = toDegrees(Math.atan2(y, x));
+
+            return (bearing + 360) % 360;
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+
+</html>
