@@ -58,7 +58,9 @@
 
         async function getFlights() {
             try {
-                const response = await fetch('https://opensky-network.org/api/states/all', {
+                // Add a timestamp to the URL to prevent caching
+                const timestamp = new Date().getTime();
+                const response = await fetch(`https://opensky-network.org/api/states/all?cache_bust=${timestamp}`, {
                     method: 'GET',
                     headers: {
                         'Authorization': 'Basic ' + btoa('patra:Kalpataru@2015')
@@ -90,6 +92,7 @@
                 console.error('Error fetching flight data:', error);
             }
         }
+
 
         function initMap() {
             map = L.map('map').setView([20.5937, 78.9629], 5);
