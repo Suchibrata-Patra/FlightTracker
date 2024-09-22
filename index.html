@@ -52,23 +52,6 @@
             display: none;
             z-index: 1000;
         }
-
-        .login-dropdown {
-            margin: 20px;
-        }
-
-        .go-button {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px;
-        }
-
-        .go-button:hover {
-            background-color: #0056b3;
-        }
     </style>
 </head>
 
@@ -77,12 +60,6 @@
         <br>
         Developed by Timora Inc.
     </h6>
-    <select id="loginDropdown" class="login-dropdown">
-        <option value="suchibrata:Kalpataru@2015">ID 1</option>
-        <option value="kamal:Kalpataru@2015">ID 2</option>
-        <option value="patra:Kalpataru@2015">ID 3</option>
-    </select>
-    <button id="goButton" class="go-button">Go</button>
     <div id="map"></div>
     <div class="info-box" id="infoBox"></div>
 
@@ -95,18 +72,13 @@
         let currentFlightPath = null;
         const animationDuration = 1500;
 
-        // Get selected login ID from dropdown
-        const loginDropdown = document.getElementById('loginDropdown');
-        const goButton = document.getElementById('goButton');
-
         async function getFlights() {
             try {
                 const timestamp = new Date().getTime();
-                const selectedLogin = loginDropdown.value;
                 const response = await fetch(`https://opensky-network.org/api/states/all?cache_bust=${timestamp}`, {
                     method: 'GET',
                     headers: {
-                        'Authorization': 'Basic ' + btoa(selectedLogin)
+                        'Authorization': 'Basic ' + btoa('kamal:Kalpataru@2015')
                     }
                 });
 
@@ -119,6 +91,7 @@
                     const longitude = flight[5];
                     const altitude = flight[7];
                     const velocity = flight[9];
+                    const trueTrack = flight[10]; // Assuming trueTrack is at index 10
 
                     if (latitude >= 8 && latitude <= 37 && longitude >= 68 && longitude <= 97) {
                         const newPosition = { lat: latitude, lng: longitude };
@@ -126,10 +99,10 @@
                         if (flightMarkers[icao24]) {
                             const lastPosition = lastKnownPositions[icao24];
                             if (calculateDistance(newPosition, lastPosition) > 0.1) {
-                                moveMarkerSmoothly(flightMarkers[icao24], lastPosition, newPosition);
+                                moveMarkerSmoothly(flightMarkers[icao24], lastPosition, newPosition, trueTrack);
                             }
                         } else {
-                            const marker = createFlightMarker(callsign, latitude, longitude, altitude, velocity);
+                            const marker = createFlightMarker(callsign, latitude, longitude, altitude, velocity, trueTrack);
                             flightMarkers[icao24] = marker;
                         }
 
@@ -155,6 +128,9 @@
                 maxZoom: 19
             }).addTo(map);
 
+            setInterval(getFlights, 4000);
+            getFlights();
+
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(position => {
                     const { latitude, longitude } = position.coords;
@@ -179,10 +155,10 @@
             });
         }
 
-        function createFlightMarker(callsign, lat, lng, altitude, velocity) {
+        function createFlightMarker(callsign, lat, lng, altitude, velocity, trueTrack) {
             const marker = L.divIcon({
                 className: 'custom-marker',
-                html: `<span title="${callsign}">✈</span>`,
+                html: `<span title="${callsign}" style="transform: rotate(${trueTrack}deg); transition: transform 0.2s;">✈</span>`,
                 iconSize: [30, 30]
             });
 
@@ -203,6 +179,7 @@
                 map.setView([lat, lng], 7);
                 showInfoBox(callsign, lat, lng, altitude, velocity);
             });
+            flightMarker.trueTrack = trueTrack; // Store the true track for later use
             return flightMarker;
         }
 
@@ -218,7 +195,7 @@
             return locationMarker;
         }
 
-        function moveMarkerSmoothly(marker, oldPos, newPos) {
+        function moveMarkerSmoothly(marker, oldPos, newPos, trueTrack) {
             let start = null;
 
             function animateMove(timestamp) {
@@ -232,6 +209,11 @@
 
                 marker.setLatLng([lat, lng]);
 
+                // Update rotation based on trueTrack
+                const rotation = trueTrack; // Keep the final rotation
+                const icon = marker.getElement().children[0];
+                icon.style.transform = `rotate(${rotation}deg)`;
+
                 if (t < 1) {
                     requestAnimationFrame(animateMove);
                 } else {
@@ -243,7 +225,7 @@
         }
 
         function calculateDistance(pos1, pos2) {
-            const R = 6371;
+            const R = 6371; // Radius of the Earth in km
             const dLat = (pos2.lat - pos1.lat) * Math.PI / 180;
             const dLng = (pos2.lng - pos1.lng) * Math.PI / 180;
             const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -257,38 +239,32 @@
 
         function updateInfoBox(callsign, latitude, longitude, altitude, velocity) {
             const infoBox = document.getElementById('infoBox');
-            const airline = getAirline(callsign); // Fetch the airline name based on the callsign
+            const airline = getAirline(callsign);
             infoBox.innerHTML = `
-                <strong>Flight Information:</strong><br>
+                <strong>Flight Info:</strong><br>
                 Callsign: ${callsign}<br>
-                Airline: ${airline}<br>
-                Latitude: ${latitude}<br>
-                Longitude: ${longitude}<br>
                 Altitude: ${altitude} m<br>
-                Speed: ${velocity} m/s
+                Speed: ${velocity} m/s<br>
+                Coordinates: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}<br>
+                Airline: ${airline}<br>
             `;
-        }
-
-        function hideInfoBox() {
-            const infoBox = document.getElementById('infoBox');
-            infoBox.style.display = 'none';
-        }
-
-        function showInfoBox(callsign, lat, lng, altitude, velocity) {
-            const infoBox = document.getElementById('infoBox');
-            updateInfoBox(callsign, lat, lng, altitude, velocity);
             infoBox.style.display = 'block';
         }
 
-        // Sample function to get airline based on callsign
-        function getAirline(callsign) {
-            // Replace this with actual logic to fetch airline information
-            return "Airline Name"; // Placeholder
+        function showInfoBox(callsign, latitude, longitude, altitude, velocity) {
+            updateInfoBox(callsign, latitude, longitude, altitude, velocity);
         }
 
-        goButton.addEventListener('click', getFlights); // Fetch flights when "Go" button is clicked
+        function hideInfoBox() {
+            document.getElementById('infoBox').style.display = 'none';
+        }
 
-        initMap();
+        function getAirline(callsign) {
+            // Mock function to return airline name based on callsign
+            return 'Airline ABC';
+        }
+
+        window.onload = initMap;
     </script>
 </body>
 
