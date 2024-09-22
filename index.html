@@ -33,10 +33,17 @@
             color: #ff5e00;
             transform-origin: center;
         }
+
+        .my-location-marker {
+            font-size: 25px;
+            color: #007bff;
+            transform-origin: center;
+        }
     </style>
 </head>
 
 <body>
+    <h1>Live Flight Tracker - India</h1>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -44,6 +51,7 @@
         let map;
         let flightMarkers = {};
         let lastKnownPositions = {};
+        let myLocationMarker = null;
 
         async function getFlights() {
             try {
@@ -89,6 +97,23 @@
 
             setInterval(getFlights, 2000); // Fetch data every 2 seconds
             getFlights();
+
+            // Fetch and display the user's current location
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    const { latitude, longitude } = position.coords;
+                    if (myLocationMarker) {
+                        myLocationMarker.setLatLng([latitude, longitude]);
+                    } else {
+                        myLocationMarker = createMyLocationMarker(latitude, longitude);
+                    }
+                    map.setView([latitude, longitude], 8); // Zoom to the user's location
+                }, error => {
+                    console.error('Error getting location:', error);
+                });
+            } else {
+                console.error('Geolocation is not supported by this browser.');
+            }
         }
 
         function createFlightMarker(callsign, lat, lng, altitude, velocity) {
@@ -101,6 +126,18 @@
             const flightMarker = L.marker([lat, lng], { icon: marker }).addTo(map);
             flightMarker.bindPopup(`Callsign: ${callsign}<br>Altitude: ${altitude} m<br>Speed: ${velocity} m/s`);
             return flightMarker;
+        }
+
+        function createMyLocationMarker(lat, lng) {
+            const marker = L.divIcon({
+                className: 'my-location-marker',
+                html: `<span title="Your Location">📍</span>`,
+                iconSize: [30, 30]
+            });
+
+            const locationMarker = L.marker([lat, lng], { icon: marker }).addTo(map);
+            locationMarker.bindPopup('You are here!');
+            return locationMarker;
         }
 
         function interpolateMarker(marker, icao24, newLat, newLng) {
